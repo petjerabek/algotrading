@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import statistics
 
 @dataclass
 class Order:
@@ -8,6 +9,7 @@ class Order:
     qty: int
     remaining: int
     cancelled: bool = False
+    owner: object = None
 
     @property
     def status(self):
@@ -27,15 +29,15 @@ class Book:
         self.trades = []
         self.new_id = 0
 
-    def rest(self, side, price, qty, append=True):
+    def rest(self, side, price, qty, append=True, owner=None):
         self.new_id += 1
-        order = Order(self.new_id, side, price, qty, qty)
+        order = Order(self.new_id, side, price, qty, qty, owner=owner)
         if append: self.orders[self.new_id] = order
         return order
 
     def live_orders(self):
         live = []
-        for id, o in self.orders.items():
+        for o in self.orders.values():
             if o.remaining > 0: live.append(o)
 
         return live
@@ -76,8 +78,8 @@ class Book:
 
         return matchable_orders
 
-    def submit(self, side, price, qty):
-        incoming = self.rest(side, price, qty, append=False)
+    def submit(self, side, price, qty, owner=None, ioc=False):
+        incoming = self.rest(side, price, qty, append=False, owner=owner)
         matchable_orders = self.matchable(side, price)
 
         trades = []
@@ -91,6 +93,10 @@ class Book:
             if incoming.remaining == 0:
                 break
 
+        if incoming.remaining > 0 and ioc:
+            incoming.remaining = 0
+            incoming.cancelled = True
+
         self.orders[incoming.id] = incoming
         self.trades.extend(trades)
 
@@ -99,6 +105,15 @@ class Book:
     def check(self):
         bid, ask = self.best_bid(), self.best_ask()
         assert bid is None or ask is None or bid < ask, f"crossed: {bid} >= {ask}"
+
+    def sanity(self, max_distance=50):
+        if len(self.trades) > 0:
+            prices = []
+            for trade in self.trades[-100:]:
+                prices.append(trade.price)
+
+            for order in self.live_orders():
+                assert abs((order.price - statistics.median(prices))) < max_distance, f"absurd resting order: {order.price}"
 
     def cancel(self, order_id):
         order = self.orders.get(order_id)
@@ -129,11 +144,11 @@ class Book:
                         sell_price_levels[o.price] = o.remaining
 
         for price, qty in sorted(buy_price_levels.items(), reverse=True):
-            if len(bids) == depth and not all:
+            if len(bids) == depth and not full:
                 break
             bids.append((price, qty))
         for price, qty in sorted(sell_price_levels.items()):
-            if len(asks) == depth and not all:
+            if len(asks) == depth and not full:
                 break
             asks.append((price, qty))
 
