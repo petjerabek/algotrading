@@ -79,6 +79,37 @@ class Taker(Trader):
                 id, trades = book.submit(side, price, self.size, ioc=True, owner=self)
                 dispatch(book, trades)
 
+class MarketMaker(Trader):
+    def __init__(self, size=10, k=0.05, name=None):
+        super().__init__(name)
+        self.size = size
+        self.k = k
+        self.last_bid_id = None
+        self.last_ask_id = None
+
+    def act(self, book):
+        if self.last_bid_id is not None:
+            book.cancel(self.last_bid_id)
+        if self.last_ask_id is not None:
+            book.cancel(self.last_ask_id)
+
+        best_bid = book.best_bid()
+        best_ask = book.best_ask()
+
+        if best_bid is not None and best_ask is not None:
+            fv_estimate = round((best_bid + best_ask) / 2)
+            half_spread = round((best_ask - best_bid) / 2)
+            skew = -self.k * self.position
+
+            bid = round(fv_estimate - half_spread + skew)
+            ask = round(fv_estimate + half_spread + skew)
+
+            self.last_bid_id, bid_trades = book.submit('buy', bid, self.size, owner=self)
+            dispatch(book, bid_trades)
+
+            self.last_ask_id, ask_trades = book.submit('sell', ask, self.size, owner=self)
+            dispatch(book, ask_trades)
+
 def dispatch(book, trades):
      for trade in trades:
           resting_order = book.orders[trade.resting_id]
@@ -93,30 +124,50 @@ def dispatch(book, trades):
 
 from lob import Book
 
-fv = FairValue(start=10000, volatility=1, seed=7)
-b = Book()
-makers = [Maker(noise=2, offset=3, seed=100 + i) for i in range(20)]
-takers = [Taker(seed=100 + i) for i in range(20)]
-all_traders = makers + takers
+max_positions = []
+pnls = []
 
-for _ in range(200):
-    v = fv.step()
-    for m in makers:
-         m.act(b, v)
-    for t in takers:
-         t.act(b)
-    b.check()
+for j in range(5):
+    fv = FairValue(start=10000, volatility=1, seed=7 + j)
+    b = Book()
+    makers = [Maker(noise=2, offset=3, seed=100 + i + j) for i in range(20)]
+    takers = [Taker(seed=100 + i + j) for i in range(20)]
+    market_makers = [MarketMaker()]
 
-    best_ask = b.best_ask()
-    best_bid = b.best_bid()
-    
-    if best_ask is not None and best_bid is not None:
-        mid = (best_ask + best_bid) / 2
-        total = sum(t.pnl(mid) for t in all_traders)
-        assert abs(total) < 1e-9, f"PnL doesn't sum to zero: {total}"
+    all_traders = makers + takers + market_makers
 
-        makers_pnl = sum(m.pnl(mid) for m in makers)
-        takers_pnl = sum(t.pnl(mid) for t in takers)
-        print(f'Makers pnl: {makers_pnl} | Takers pnl: {takers_pnl}')
+    print(f'Begin sim {j}')
 
-b.show()
+    positions = []
+
+    for i in range(200):
+        v = fv.step()
+        for m in makers:
+            m.act(b, v)
+        for t in takers:
+            t.act(b)
+        for mk in market_makers:
+            mk.act(b)
+        b.check()
+
+        best_ask = b.best_ask()
+        best_bid = b.best_bid()
+        
+        if best_ask is not None and best_bid is not None:
+            mid = round((best_ask + best_bid) / 2)
+            total = sum(t.pnl(mid) for t in all_traders)
+            assert abs(total) < 1e-9, f"PnL doesn't sum to zero: {total}"
+
+            makers_pnl = sum(m.pnl(mid) for m in makers)
+            takers_pnl = sum(t.pnl(mid) for t in takers)
+            print(f'Makers pnl: {makers_pnl} | Takers pnl: {takers_pnl}')
+            print(f'Market maker pnl: {market_makers[0].pnl(mid)}')
+            print(f'Market maker position: {market_makers[0].position}')
+
+            positions.append(market_makers[0].position)
+
+            if i == 199:
+                pnls.append(market_makers[0].pnl(mid))
+                max_positions.append(max(positions))
+
+print(f'pnls: {pnls} | max positions {max_positions}')
