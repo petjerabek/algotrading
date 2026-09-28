@@ -25,6 +25,10 @@ session that changes a decision, a result, or the code's API.
   the checks, and the expected output; **Petr writes the code**. Point at bugs, don't fix them.
 - Claude writes plumbing directly: adapters, logging, harnesses, test suites.
 - Short answers. Prefer measurements over claims. Say so when a claim is unverified.
+- Sessions via the claude.ai bridge edit files on Petr's Mac directly: close the
+  affected VS Code tabs first, or an open buffer can be saved over the new version
+  (happened 2026-09-28). The bridge shell has no git identity; commit with
+  `-c user.name=petjerabek -c user.email=petjerabek99@gmail.com`.
 
 ## Code in this repo
 
@@ -144,6 +148,26 @@ Deferred until runs get too slow.
   > message-rate discipline > timed dress rehearsal > advanced AS.
 - Team roles on the day: adapter/infra, strategy (the only one who edits decision code),
   measurement (never edits the bot), rules/ops.
+
+## Day-of AI workflow (proposed 2026-09-28, not yet decided)
+
+- Build in Claude Code locally in the repo (reads this file); use claude.ai chat for
+  interpretation and decisions, not typing.
+- One AI session per role; the strategy decisions stay human.
+- After the adapter is written, a fresh session gets only their spec + the adapter
+  and looks for mismatches.
+- Prepare prompts, not agent pipelines: project slash commands in `.claude/commands/`
+  (`/adapter`, `/rules`, `/round-report`, `/review-adapter`) — not written yet.
+- Fallbacks: Technical Rules may restrict AI (toolkit must be usable by hand), phone
+  hotspot, spread usage across teammates' accounts, repo on GitHub before the day.
+- Rehearse this workflow in the timed dress rehearsal (e.g. writing the RTG adapter cold).
+
+## Next up
+
+1. Port Petr's MarketMaker (skew) into `arena/strategies.py` — Petr writes it.
+2. PnL test: quote around mid vs mid + model, several seeds.
+3. Slash commands + one-page day plan.
+4. RTG adapter (proves `arena/core.py` generalises).
 
 ## Open questions
 
