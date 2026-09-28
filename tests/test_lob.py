@@ -14,7 +14,7 @@ import random
 
 import pytest
 
-from lob import Book
+from sandbox.lob import Book
 
 
 @pytest.fixture
